@@ -57,88 +57,31 @@ outputs:
     description: 'Comma-delimited required secret names that were missing.'
     value: ${{ steps.ensure.outputs.missing_secrets }}
 
+# The binary owns all logic and UX: it reads its inputs from INPUT_* (and the
+# auth/repo env vars below), inspects the environment, writes GITHUB_OUTPUT, the
+# step summary and an annotation, and exits non-zero when fail-if-not-ready is
+# set and the slot is not reusable. This action only installs it and passes
+# inputs through.
 runs:
   using: 'composite'
   steps:
-    - name: Resolve release tag
-      id: tag
-      shell: bash
-      run: |
-        set -euo pipefail
-        if [[ "${{ inputs.version }}" == "latest" ]]; then
-          tag=$(gh release view --repo "${{ inputs.binary-repo }}" --json tagName -q .tagName)
-        else
-          tag="${{ inputs.version }}"
-        fi
-        echo "tag=$tag" >> "$GITHUB_OUTPUT"
-      env:
-        GH_TOKEN: ${{ github.token }}
-
-    - name: Resolve binary asset name
-      id: asset
-      shell: bash
-      run: |
-        case "${{ runner.os }}-${{ runner.arch }}" in
-          Linux-X64)   name="gh-env-scratch-ensure-x86_64-unknown-linux-gnu" ;;
-          Linux-ARM64) name="gh-env-scratch-ensure-aarch64-unknown-linux-gnu" ;;
-          macOS-X64)   name="gh-env-scratch-ensure-x86_64-apple-darwin" ;;
-          macOS-ARM64) name="gh-env-scratch-ensure-aarch64-apple-darwin" ;;
-          Windows-X64) name="gh-env-scratch-ensure-x86_64-pc-windows-msvc.exe" ;;
-          *) echo "Unsupported runner: ${{ runner.os }}-${{ runner.arch }}" >&2; exit 1 ;;
-        esac
-        echo "name=$name" >> "$GITHUB_OUTPUT"
-
-    - name: Download gh-env-scratch-ensure binary
-      shell: bash
-      run: |
-        set -euo pipefail
-        bin_dir="${RUNNER_TEMP}/gh-env-scratch-ensure"
-        mkdir -p "$bin_dir"
-        gh release download "${{ steps.tag.outputs.tag }}" \
-          --repo "${{ inputs.binary-repo }}" \
-          --pattern "${{ steps.asset.outputs.name }}" \
-          --dir "$bin_dir"
-        bin_path="$bin_dir/${{ steps.asset.outputs.name }}"
-        chmod +x "$bin_path"
-        echo "$bin_dir" >> "$GITHUB_PATH"
-        if [[ "$bin_path" != "$bin_dir/gh-env-scratch-ensure" && "$bin_path" != "$bin_dir/gh-env-scratch-ensure.exe" ]]; then
-          ext=""
-          [[ "${{ runner.os }}" == "Windows" ]] && ext=".exe"
-          ln -sf "$bin_path" "$bin_dir/gh-env-scratch-ensure$ext"
-        fi
-      env:
-        GH_TOKEN: ${{ github.token }}
+    - name: Set up gh-env-scratch-ensure
+      uses: busbar-actions/setup@main
+      with:
+        binary: gh-env-scratch-ensure
+        version: ${{ inputs.version }}
+        binary-repo: ${{ inputs.binary-repo }}
 
     - name: Inspect scratch slot
       id: ensure
       shell: bash
       env:
+        INPUT_ENVIRONMENT_NAME: ${{ inputs.environment-name }}
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        INPUT_REQUIRED_SECRETS: ${{ inputs.required-secrets }}
+        INPUT_FAIL_IF_NOT_READY: ${{ inputs.fail-if-not-ready }}
         GITHUB_TOKEN: ${{ inputs.github-token != '' && inputs.github-token || github.token }}
         GH_APP_ID: ${{ inputs.github-app-id }}
         GH_APP_PRIVATE_KEY: ${{ inputs.github-app-private-key }}
         GITHUB_REPOSITORY: ${{ github.repository }}
-      run: |
-        set -euo pipefail
-        args=()
-
-        repo="${{ inputs.repository }}"
-        if [[ -n "$repo" ]]; then
-          args+=(--repository "$repo")
-        fi
-
-        env_name="${{ inputs.environment-name }}"
-        if [[ -n "$env_name" ]]; then
-          args+=(--environment-name "$env_name")
-        fi
-
-        required_secrets="${{ inputs.required-secrets }}"
-        required_secrets="${required_secrets// /}"
-        if [[ -n "$required_secrets" ]]; then
-          args+=(--required-secrets "$required_secrets")
-        fi
-
-        if [[ "${{ inputs.fail-if-not-ready }}" == "true" ]]; then
-          args+=(--fail-if-not-ready)
-        fi
-
-        gh-env-scratch-ensure "${args[@]}"
+      run: gh-env-scratch-ensure
