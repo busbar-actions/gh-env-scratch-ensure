@@ -19,18 +19,15 @@ inputs:
     description: 'If true, fail when the environment is absent or missing any required secret names.'
     required: false
     default: 'false'
-  github-token:
-    description: 'GitHub token with permission to inspect environments and environment secrets. Optional when using GitHub App credentials.'
-    required: false
-    default: ''
+  # Authentication is EXCLUSIVELY via the Busbar GitHub App — this action never
+  # uses GITHUB_TOKEN. The App mints a least-privilege, repo-pinned, read-only
+  # installation token (environments:read + secrets:read).
   github-app-id:
-    description: 'GitHub App id used to mint an installation token for the target repository.'
-    required: false
-    default: ''
+    description: 'GitHub App id (REQUIRED). The App mints a least-privilege installation token for the target repo.'
+    required: true
   github-app-private-key:
-    description: 'GitHub App private key PEM used to mint an installation token.'
-    required: false
-    default: ''
+    description: 'GitHub App private key PEM (REQUIRED). Provide via a secret.'
+    required: true
   version:
     description: 'Release tag of the gh-env-scratch-ensure binary.'
     required: false
@@ -65,14 +62,14 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: Set up gh-env-scratch-ensure
+    - name: Install the gh-env-scratch-ensure binary from actions-dist
       uses: busbar-actions/setup@main
       with:
         binary: gh-env-scratch-ensure
         version: ${{ inputs.version }}
         binary-repo: ${{ inputs.binary-repo }}
 
-    - name: Inspect scratch slot
+    - name: Inspect the "${{ inputs.environment-name }}" GitHub Environment slot for reusable scratch-org secrets via the Busbar GitHub App
       id: ensure
       shell: bash
       env:
@@ -80,8 +77,18 @@ runs:
         INPUT_REPOSITORY: ${{ inputs.repository }}
         INPUT_REQUIRED_SECRETS: ${{ inputs.required-secrets }}
         INPUT_FAIL_IF_NOT_READY: ${{ inputs.fail-if-not-ready }}
-        GITHUB_TOKEN: ${{ inputs.github-token != '' && inputs.github-token || github.token }}
+        # This action authenticates ONLY via the Busbar GitHub App. GITHUB_TOKEN is
+        # never passed or used — the App mints a least-privilege, repo-pinned,
+        # read-only installation token (environments:read + secrets:read).
         GH_APP_ID: ${{ inputs.github-app-id }}
         GH_APP_PRIVATE_KEY: ${{ inputs.github-app-private-key }}
         GITHUB_REPOSITORY: ${{ github.repository }}
-      run: gh-env-scratch-ensure
+      run: |
+        set -euo pipefail
+        echo "▶ TESTING: inspect the '${INPUT_ENVIRONMENT_NAME}' GitHub Environment slot in repo '${INPUT_REPOSITORY:-$GITHUB_REPOSITORY}' for required secrets [${INPUT_REQUIRED_SECRETS}] (fail-if-not-ready=${INPUT_FAIL_IF_NOT_READY})"
+        # The binary owns the App-token mint, the environment+secrets inspection,
+        # GITHUB_OUTPUT/summary/annotation, and the non-zero exit when
+        # fail-if-not-ready is set and the slot is not reusable. Any non-zero exit
+        # aborts the step — nothing is swallowed.
+        gh-env-scratch-ensure
+        echo "✓ RESULT: environment='${{ steps.ensure.outputs.environment_name }}' repository='${{ steps.ensure.outputs.repository }}' exists=${{ steps.ensure.outputs.environment_exists }} slot_ready=${{ steps.ensure.outputs.slot_ready }} missing_secrets='${{ steps.ensure.outputs.missing_secrets }}'"
