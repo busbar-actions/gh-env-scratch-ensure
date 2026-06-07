@@ -62,14 +62,14 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: Install the gh-env-scratch-ensure binary from actions-dist
+    - name: Install binary
       uses: busbar-actions/setup@main
       with:
         binary: gh-env-scratch-ensure
         version: ${{ inputs.version }}
         binary-repo: ${{ inputs.binary-repo }}
 
-    - name: Inspect the "${{ inputs.environment-name }}" GitHub Environment slot for reusable scratch-org secrets via the Busbar GitHub App
+    - name: Ensure scratch
       id: ensure
       shell: bash
       env:
@@ -85,10 +85,10 @@ runs:
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
         set -euo pipefail
-        echo "▶ TESTING: inspect the '${INPUT_ENVIRONMENT_NAME}' GitHub Environment slot in repo '${INPUT_REPOSITORY:-$GITHUB_REPOSITORY}' for required secrets [${INPUT_REQUIRED_SECRETS}] (fail-if-not-ready=${INPUT_FAIL_IF_NOT_READY})"
+        echo "Inspecting the '${INPUT_ENVIRONMENT_NAME}' GitHub Environment slot in repo '${INPUT_REPOSITORY:-$GITHUB_REPOSITORY}' for required secrets [${INPUT_REQUIRED_SECRETS}] (fail-if-not-ready=${INPUT_FAIL_IF_NOT_READY})"
         # The binary owns the App-token mint, the environment+secrets inspection,
         # GITHUB_OUTPUT/summary/annotation, and the non-zero exit when
         # fail-if-not-ready is set and the slot is not reusable. Any non-zero exit
         # aborts the step — nothing is swallowed.
         gh-env-scratch-ensure
-        echo "✓ RESULT: environment='${{ steps.ensure.outputs.environment_name }}' repository='${{ steps.ensure.outputs.repository }}' exists=${{ steps.ensure.outputs.environment_exists }} slot_ready=${{ steps.ensure.outputs.slot_ready }} missing_secrets='${{ steps.ensure.outputs.missing_secrets }}'"
+        echo "Result: environment='${{ steps.ensure.outputs.environment_name }}' repository='${{ steps.ensure.outputs.repository }}' exists=${{ steps.ensure.outputs.environment_exists }} slot_ready=${{ steps.ensure.outputs.slot_ready }} missing_secrets='${{ steps.ensure.outputs.missing_secrets }}'"
