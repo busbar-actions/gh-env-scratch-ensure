@@ -11,17 +11,17 @@ inputs:
     description: 'Target repository in owner/repo form. Empty = current repository.'
     required: false
     default: ''
-  required-secrets:
-    description: 'Comma-delimited secret names that must be present for the slot to be considered reusable.'
+  required-variables:
+    description: 'Comma-delimited (non-secret) Environment Variable names that must be present for the slot to be considered reusable.'
     required: false
-    default: 'SF_ACCESS_TOKEN,SF_INSTANCE_URL,SF_USERNAME,SF_LOGIN_URL,SF_SCRATCH_ORG_ID,SF_SCRATCH_ORG_INFO_ID,BUSBAR_CREDENTIAL_CONTEXT'
+    default: 'SF_INSTANCE_URL,SF_USERNAME,SF_LOGIN_URL,SF_SCRATCH_ORG_ID,SF_SCRATCH_ORG_INFO_ID'
   fail-if-not-ready:
-    description: 'If true, fail when the environment is absent or missing any required secret names.'
+    description: 'If true, fail when the environment is absent or missing any required variable names.'
     required: false
     default: 'false'
   # Authentication is EXCLUSIVELY via the Busbar GitHub App — this action never
   # uses GITHUB_TOKEN. The App mints a least-privilege, repo-pinned, read-only
-  # installation token (environments:read + secrets:read).
+  # installation token (environments:read).
   github-app-id:
     description: 'GitHub App id (REQUIRED). The App mints a least-privilege installation token for the target repo.'
     required: true
@@ -48,11 +48,11 @@ outputs:
     description: 'Whether the environment exists.'
     value: ${{ steps.ensure.outputs.environment_exists }}
   slot_ready:
-    description: 'Whether all required secret names are present in the environment.'
+    description: 'Whether all required variable names are present in the environment.'
     value: ${{ steps.ensure.outputs.slot_ready }}
-  missing_secrets:
-    description: 'Comma-delimited required secret names that were missing.'
-    value: ${{ steps.ensure.outputs.missing_secrets }}
+  missing_variables:
+    description: 'Comma-delimited required variable names that were missing.'
+    value: ${{ steps.ensure.outputs.missing_variables }}
 
 # The binary owns all logic and UX: it reads its inputs from INPUT_* (and the
 # auth/repo env vars below), inspects the environment, writes GITHUB_OUTPUT, the
@@ -75,20 +75,20 @@ runs:
       env:
         INPUT_ENVIRONMENT_NAME: ${{ inputs.environment-name }}
         INPUT_REPOSITORY: ${{ inputs.repository }}
-        INPUT_REQUIRED_SECRETS: ${{ inputs.required-secrets }}
+        INPUT_REQUIRED_VARIABLES: ${{ inputs.required-variables }}
         INPUT_FAIL_IF_NOT_READY: ${{ inputs.fail-if-not-ready }}
         # This action authenticates ONLY via the Busbar GitHub App. GITHUB_TOKEN is
         # never passed or used — the App mints a least-privilege, repo-pinned,
-        # read-only installation token (environments:read + secrets:read).
+        # read-only installation token (environments:read).
         GH_APP_ID: ${{ inputs.github-app-id }}
         GH_APP_PRIVATE_KEY: ${{ inputs.github-app-private-key }}
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
         set -euo pipefail
-        echo "Inspecting the '${INPUT_ENVIRONMENT_NAME}' GitHub Environment slot in repo '${INPUT_REPOSITORY:-$GITHUB_REPOSITORY}' for required secrets [${INPUT_REQUIRED_SECRETS}] (fail-if-not-ready=${INPUT_FAIL_IF_NOT_READY})"
-        # The binary owns the App-token mint, the environment+secrets inspection,
+        echo "Inspecting the '${INPUT_ENVIRONMENT_NAME}' GitHub Environment slot in repo '${INPUT_REPOSITORY:-$GITHUB_REPOSITORY}' for required variables [${INPUT_REQUIRED_VARIABLES}] (fail-if-not-ready=${INPUT_FAIL_IF_NOT_READY})"
+        # The binary owns the App-token mint, the environment+variables inspection,
         # GITHUB_OUTPUT/summary/annotation, and the non-zero exit when
         # fail-if-not-ready is set and the slot is not reusable. Any non-zero exit
         # aborts the step — nothing is swallowed.
         gh-env-scratch-ensure
-        echo "Result: environment='${{ steps.ensure.outputs.environment_name }}' repository='${{ steps.ensure.outputs.repository }}' exists=${{ steps.ensure.outputs.environment_exists }} slot_ready=${{ steps.ensure.outputs.slot_ready }} missing_secrets='${{ steps.ensure.outputs.missing_secrets }}'"
+        echo "Result: environment='${{ steps.ensure.outputs.environment_name }}' repository='${{ steps.ensure.outputs.repository }}' exists=${{ steps.ensure.outputs.environment_exists }} slot_ready=${{ steps.ensure.outputs.slot_ready }} missing_variables='${{ steps.ensure.outputs.missing_variables }}'"
